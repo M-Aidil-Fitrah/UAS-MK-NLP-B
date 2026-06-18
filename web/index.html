@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SkillScope ID</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="SkillScope ID workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Indonesian Job Intelligence</p>
+            <h1>SkillScope ID</h1>
+          </div>
+          <div class="model-status" id="modelStatus" data-state="loading">
+            <span class="status-dot"></span>
+            <span id="modelStatusText">Memuat model</span>
+          </div>
+        </header>
+
+        <section class="metrics-grid" aria-label="Ringkasan hasil">
+          <article class="metric-card">
+            <span class="metric-label">Hard Skills</span>
+            <strong id="hardSkillCount">0</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Technologies</span>
+            <strong id="techCount">0</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Soft Skills</span>
+            <strong id="softSkillCount">0</strong>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Avg Confidence</span>
+            <strong id="avgConfidence">-</strong>
+          </article>
+        </section>
+
+        <section class="work-grid">
+          <section class="input-panel" aria-label="Input lowongan kerja">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Source text</p>
+                <h2>Lowongan kerja</h2>
+              </div>
+              <button class="ghost-button" id="loadSampleButton" type="button">Contoh</button>
+            </div>
+
+            <textarea
+              id="jobText"
+              spellcheck="false"
+              placeholder="Tempel teks lowongan kerja di sini..."
+            ></textarea>
+
+            <div class="toolbar">
+              <button class="primary-button" id="extractButton" type="button">Extract Skills</button>
+              <button class="secondary-button" id="clearButton" type="button">Clear</button>
+            </div>
+
+            <p class="helper-text" id="helperText">
+              Model ONNX akan berjalan langsung di browser setelah file model tersedia di folder <code>web/model</code>.
+            </p>
+          </section>
+
+          <section class="output-panel" aria-label="Hasil ekstraksi">
+            <div class="panel-heading">
+              <div>
+                <p class="section-kicker">Entity map</p>
+                <h2>Highlight hasil</h2>
+              </div>
+              <div class="filter-tabs" role="group" aria-label="Filter label">
+                <button class="filter-tab active" data-filter="all" type="button">All</button>
+                <button class="filter-tab" data-filter="HSkill" type="button">Hard</button>
+                <button class="filter-tab" data-filter="Tech" type="button">Tech</button>
+                <button class="filter-tab" data-filter="SSkill" type="button">Soft</button>
+              </div>
+            </div>
+
+            <div class="highlight-box" id="highlightBox">
+              <p class="empty-state">Hasil highlight akan muncul di sini.</p>
+            </div>
+
+            <div class="export-row">
+              <button class="secondary-button" id="exportJsonButton" type="button">Export JSON</button>
+              <button class="secondary-button" id="exportCsvButton" type="button">Export CSV</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="entity-columns" aria-label="Daftar entitas">
+          <article class="entity-card hskill">
+            <h3>Hard Skills</h3>
+            <ul id="hardSkillList"></ul>
+          </article>
+          <article class="entity-card tech">
+            <h3>Technologies</h3>
+            <ul id="techList"></ul>
+          </article>
+          <article class="entity-card sskill">
+            <h3>Soft Skills</h3>
+            <ul id="softSkillList"></ul>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

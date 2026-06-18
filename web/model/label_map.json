@@ -1,0 +1,29 @@
+{
+  "label_list": [
+    "O",
+    "B-HSkill",
+    "I-HSkill",
+    "B-SSkill",
+    "I-SSkill",
+    "B-Tech",
+    "I-Tech"
+  ],
+  "label2id": {
+    "O": 0,
+    "B-HSkill": 1,
+    "I-HSkill": 2,
+    "B-SSkill": 3,
+    "I-SSkill": 4,
+    "B-Tech": 5,
+    "I-Tech": 6
+  },
+  "id2label": {
+    "0": "O",
+    "1": "B-HSkill",
+    "2": "I-HSkill",
+    "3": "B-SSkill",
+    "4": "I-SSkill",
+    "5": "B-Tech",
+    "6": "I-Tech"
+  }
+}

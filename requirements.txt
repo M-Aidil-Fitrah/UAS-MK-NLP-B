@@ -1,0 +1,14 @@
+transformers
+datasets
+evaluate
+seqeval
+accelerate
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+torch
+onnx
+onnxruntime
+optimum[onnxruntime]
