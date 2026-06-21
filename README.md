@@ -69,7 +69,6 @@ Tidak ada server backend. Semua berjalan di sisi klien.
 ```
 UAS/
 ├── README.md                          # Dokumentasi proyek (file ini)
-├── requirements.txt                   # Dependencies Python untuk training
 ├── .gitignore                         # File yang diabaikan Git
 │
 └── src/
