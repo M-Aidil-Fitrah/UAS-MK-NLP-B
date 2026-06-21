@@ -75,6 +75,9 @@ UAS/
     ├── notebooks/
     │   └── uasnlp.ipynb               # Notebook training & evaluasi (Kaggle)
     │
+    ├── dataset/
+    │   └── NERSkill.Id.txt            # Dataset NERSkill.Id (Download dari Mendeley Data)
+    │
     └── web/
         ├── index.html                 # Halaman utama web demo
         ├── style.css                  # Styling (dark glassmorphism theme)
