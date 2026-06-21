@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="SkillScope ID — Ekstraksi skill otomatis dari lowongan kerja Indonesia menggunakan NER berbasis Transformer. Live demo dengan ONNX Runtime." />
+    <title>SkillScope ID — Indonesian Skill Extractor</title>
+    <link rel="icon" type="image/png" href="./assets/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  </head>
+  <body>
+
+    <!-- ===== LOADING OVERLAY ===== -->
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="loading-content">
+        <div class="loading-spinner">
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+        </div>
+        <h2 class="loading-title">Memuat Model AI</h2>
+        <p class="loading-subtitle" id="loadingText">Mengunduh model ONNX ke browser...</p>
+        <div class="loading-progress">
+          <div class="loading-bar" id="loadingBar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== MAIN APP ===== -->
+    <main class="app-shell">
+
+      <!-- ===== AMBIENT BACKGROUND ===== -->
+      <div class="ambient-bg">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+      </div>
+
+      <!-- ===== HEADER ===== -->
+      <header class="hero-header" id="heroHeader">
+        <div class="hero-left">
+          <p class="hero-eyebrow">
+            <span class="eyebrow-dot"></span>
+            Indonesian Job Intelligence
+          </p>
+          <h1 class="hero-title">
+            Skill<span class="gradient-text">Scope</span> ID
+          </h1>
+          <p class="hero-description">
+            Ekstrak <strong>hard skill</strong>, <strong>soft skill</strong>, dan <strong>teknologi</strong>
+            dari teks lowongan kerja Indonesia — langsung di browser, tanpa server.
+          </p>
+        </div>
+        <div class="hero-right">
+          <div class="model-badge" id="modelStatus" data-state="loading">
+            <span class="badge-dot"></span>
+            <span class="badge-text" id="modelStatusText">Memuat model...</span>
+          </div>
+          <div class="shortcut-hint">
+            <kbd>Ctrl</kbd> + <kbd>Enter</kbd> untuk ekstrak
+          </div>
+        </div>
+      </header>
+
+      <!-- ===== METRICS STRIP ===== -->
+      <section class="metrics-strip" id="metricsStrip" aria-label="Ringkasan hasil">
+        <article class="metric-card" data-entity="hskill">
+          <div class="metric-icon">🎯</div>
+          <div class="metric-body">
+            <span class="metric-value" id="hardSkillCount">0</span>
+            <span class="metric-label">Hard Skills</span>
+          </div>
+        </article>
+        <article class="metric-card" data-entity="tech">
+          <div class="metric-icon">💻</div>
+          <div class="metric-body">
+            <span class="metric-value" id="techCount">0</span>
+            <span class="metric-label">Technologies</span>
+          </div>
+        </article>
+        <article class="metric-card" data-entity="sskill">
+          <div class="metric-icon">🤝</div>
+          <div class="metric-body">
+            <span class="metric-value" id="softSkillCount">0</span>
+            <span class="metric-label">Soft Skills</span>
+          </div>
+        </article>
+        <article class="metric-card" data-entity="confidence">
+          <div class="metric-icon">📊</div>
+          <div class="metric-body">
+            <span class="metric-value" id="avgConfidence">—</span>
+            <span class="metric-label">Avg Confidence</span>
+          </div>
+        </article>
+      </section>
+
+      <!-- ===== WORKSPACE ===== -->
+      <section class="workspace" aria-label="Workspace">
+
+        <!-- INPUT PANEL -->
+        <section class="panel input-panel" aria-label="Input lowongan kerja">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Source text</p>
+              <h2 class="panel-title">Teks Lowongan Kerja</h2>
+            </div>
+            <button class="ghost-btn" id="loadSampleButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              Muat Contoh
+            </button>
+          </div>
+
+          <div class="textarea-wrapper">
+            <textarea
+              id="jobText"
+              spellcheck="false"
+              placeholder="Tempel teks lowongan kerja di sini, lalu tekan 'Extract Skills' atau Ctrl+Enter..."
+            ></textarea>
+            <div class="char-counter" id="charCounter">0 karakter</div>
+          </div>
+
+          <div class="action-bar">
+            <button class="primary-btn" id="extractButton" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Extract Skills
+            </button>
+            <button class="outline-btn" id="clearButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Clear
+            </button>
+          </div>
+
+          <p class="status-text" id="helperText">
+            Model ONNX berjalan langsung di browser. Paste teks lowongan untuk memulai.
+          </p>
+        </section>
+
+        <!-- OUTPUT PANEL -->
+        <section class="panel output-panel" aria-label="Hasil ekstraksi">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Entity map</p>
+              <h2 class="panel-title">Highlight Hasil</h2>
+            </div>
+            <div class="filter-group" role="group" aria-label="Filter label">
+              <button class="filter-chip active" data-filter="all" type="button">All</button>
+              <button class="filter-chip" data-filter="HSkill" type="button">
+                <span class="chip-dot hskill-dot"></span> Hard
+              </button>
+              <button class="filter-chip" data-filter="Tech" type="button">
+                <span class="chip-dot tech-dot"></span> Tech
+              </button>
+              <button class="filter-chip" data-filter="SSkill" type="button">
+                <span class="chip-dot sskill-dot"></span> Soft
+              </button>
+            </div>
+          </div>
+
+          <div class="highlight-box" id="highlightBox">
+            <div class="empty-state">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <p>Hasil highlight akan muncul di sini setelah ekstraksi.</p>
+            </div>
+          </div>
+
+          <div class="export-bar">
+            <button class="outline-btn" id="exportJsonButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export JSON
+            </button>
+            <button class="outline-btn" id="exportCsvButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <!-- ===== ENTITY COLUMNS ===== -->
+      <section class="entity-grid" aria-label="Daftar entitas">
+        <article class="entity-column hskill-col">
+          <div class="col-header">
+            <span class="col-icon">🎯</span>
+            <h3>Hard Skills</h3>
+          </div>
+          <ul id="hardSkillList" class="entity-list"></ul>
+        </article>
+        <article class="entity-column tech-col">
+          <div class="col-header">
+            <span class="col-icon">💻</span>
+            <h3>Technologies</h3>
+          </div>
+          <ul id="techList" class="entity-list"></ul>
+        </article>
+        <article class="entity-column sskill-col">
+          <div class="col-header">
+            <span class="col-icon">🤝</span>
+            <h3>Soft Skills</h3>
+          </div>
+          <ul id="softSkillList" class="entity-list"></ul>
+        </article>
+      </section>
+
+      <!-- ===== FOOTER ===== -->
+      <footer class="app-footer">
+        <div class="footer-left">
+          <p class="footer-brand">SkillScope ID</p>
+          <p class="footer-sub">NER-based Skill Extraction · Proyek Akhir MK NLP</p>
+        </div>
+        <div class="footer-right">
+          <div class="footer-meta" id="footerModelInfo">
+            <span class="meta-tag">Model: —</span>
+            <span class="meta-tag">ONNX Quantized</span>
+            <span class="meta-tag">Browser Inference</span>
+          </div>
+        </div>
+      </footer>
+
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
