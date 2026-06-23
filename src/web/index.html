@@ -259,14 +259,16 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
               Analyze Match
             </button>
-            <button class="outline-btn" id="saveMatchButton" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              Simpan Lokal
-            </button>
-            <button class="outline-btn" id="loadMatchButton" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Muat Lokal
-            </button>
+          </div>
+
+          <div class="match-progress" id="matchProgress" data-state="idle" aria-live="polite">
+            <div class="match-progress-head">
+              <span id="matchProgressLabel">Menunggu analisis</span>
+              <strong id="matchProgressValue">0%</strong>
+            </div>
+            <div class="match-progress-track" aria-hidden="true">
+              <span id="matchProgressBar"></span>
+            </div>
           </div>
 
           <p class="status-text" id="matchHelperText">
@@ -321,7 +323,7 @@
           </div>
 
           <p class="privacy-note">
-            CV diproses lokal di browser. Tombol Simpan Lokal hanya menyimpan ringkasan hasil match, bukan file CV mentah.
+            CV diproses lokal di browser. File dan teks CV tidak dikirim ke server.
           </p>
         </section>
       </section>

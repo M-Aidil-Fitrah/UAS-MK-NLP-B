@@ -4,7 +4,6 @@
    ============================================================ */
 
 const MODEL_BASE = "./model";
-const MATCH_STORAGE_KEY = "skillscope.cvMatchSummary.v1";
 
 const SAMPLE_TEXT = `PT Nusantara Data sedang mencari Data Analyst yang menguasai Python, SQL, dan Microsoft Excel. Kandidat diharapkan memiliki kemampuan komunikasi yang baik, teliti, mampu membuat dashboard, serta familiar dengan Tableau atau Power BI. Pengalaman dalam analisis data dan machine learning menjadi nilai tambah. Kemampuan bekerja dalam tim dan problem solving yang kuat sangat diutamakan.`;
 
@@ -112,8 +111,10 @@ const el = {
   matchJobCharCounter: document.getElementById("matchJobCharCounter"),
   loadMatchSampleBtn: document.getElementById("loadMatchSampleButton"),
   analyzeMatchBtn: document.getElementById("analyzeMatchButton"),
-  saveMatchBtn: document.getElementById("saveMatchButton"),
-  loadMatchBtn: document.getElementById("loadMatchButton"),
+  matchProgress: document.getElementById("matchProgress"),
+  matchProgressLabel: document.getElementById("matchProgressLabel"),
+  matchProgressValue: document.getElementById("matchProgressValue"),
+  matchProgressBar: document.getElementById("matchProgressBar"),
   matchHelperText: document.getElementById("matchHelperText"),
   matchScoreRing: document.getElementById("matchScoreRing"),
   matchScore: document.getElementById("matchScore"),
@@ -802,83 +803,68 @@ function setMatchButtonLoading(isLoading) {
     : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Analyze Match`;
 }
 
+function setMatchProgress(percent, label, status = "running") {
+  const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+  el.matchProgress.dataset.state = status;
+  el.matchProgressLabel.textContent = label;
+  el.matchProgressValue.textContent = `${safePercent}%`;
+  el.matchProgressBar.style.width = `${safePercent}%`;
+}
+
+function resetMatchProgress() {
+  setMatchProgress(0, "Menunggu analisis", "idle");
+}
+
 async function analyzeCvMatch() {
+  resetMatchProgress();
   const cvText = el.cvText.value.trim();
   const jobText = el.matchJobText.value.trim();
 
   if (!cvText) {
+    setMatchProgress(0, "CV belum diisi", "error");
     el.matchHelperText.textContent = "CV masih kosong. Upload file atau paste teks CV terlebih dahulu.";
     return;
   }
 
   if (!jobText) {
+    setMatchProgress(0, "Lowongan belum diisi", "error");
     el.matchHelperText.textContent = "Lowongan target masih kosong.";
     return;
   }
 
   if (!state.session || !state.vocab) {
+    setMatchProgress(0, "Model belum siap", "error");
     el.matchHelperText.textContent = "Model belum siap. Tunggu model selesai dimuat.";
     return;
   }
 
   try {
     setMatchButtonLoading(true);
-    el.matchHelperText.textContent = "Mengekstrak skill dari CV dan lowongan...";
+    setMatchProgress(8, "Memvalidasi input...");
+    el.matchHelperText.textContent = "Menyiapkan analisis CV dan lowongan...";
 
     state.cvText = cvText;
     state.matchJobText = jobText;
+
+    setMatchProgress(18, "Mengekstrak skill dari CV...");
     state.cvEntities = await runInference(cvText);
+
+    setMatchProgress(52, "Mengekstrak requirement lowongan...");
     state.jobMatchEntities = await runInference(jobText);
+
+    setMatchProgress(76, "Mencocokkan skill dan requirement...");
     state.matchResult = compareCvToJob(state.cvEntities, state.jobMatchEntities, cvText);
 
+    setMatchProgress(92, "Merender hasil analisis...");
     renderMatchResult(state.matchResult);
+    setMatchProgress(100, "Analisis selesai", "done");
     el.matchHelperText.textContent = `Analisis selesai: ${state.matchResult.matched.length} cocok, ${state.matchResult.missing.length} belum ditemukan di CV.`;
   } catch (error) {
     console.error("CV match error:", error);
+    setMatchProgress(100, "Analisis gagal", "error");
     el.matchHelperText.textContent = "Analisis CV gagal. Cek console browser untuk detail.";
   } finally {
     setMatchButtonLoading(false);
-  }
-}
-
-function saveMatchSummary() {
-  if (!state.matchResult) {
-    el.matchHelperText.textContent = "Belum ada hasil match untuk disimpan.";
-    return;
-  }
-
-  const payload = {
-    matchResult: state.matchResult,
-    cvEntities: uniqueEntitiesForMatch(state.cvEntities),
-    jobEntities: uniqueEntitiesForMatch(state.jobMatchEntities),
-  };
-
-  try {
-    localStorage.setItem(MATCH_STORAGE_KEY, JSON.stringify(payload));
-    el.matchHelperText.textContent = "Ringkasan match disimpan lokal. Raw CV tidak disimpan.";
-  } catch (error) {
-    console.error("Save match summary error:", error);
-    el.matchHelperText.textContent = "Gagal menyimpan lokal. Browser mungkin membatasi localStorage.";
-  }
-}
-
-function loadMatchSummary() {
-  const raw = localStorage.getItem(MATCH_STORAGE_KEY);
-  if (!raw) {
-    el.matchHelperText.textContent = "Belum ada ringkasan lokal yang tersimpan.";
-    return;
-  }
-
-  try {
-    const payload = JSON.parse(raw);
-    state.matchResult = payload.matchResult;
-    state.cvEntities = payload.cvEntities || [];
-    state.jobMatchEntities = payload.jobEntities || [];
-    renderMatchResult(state.matchResult);
-    el.matchHelperText.textContent = "Ringkasan lokal berhasil dimuat. File CV mentah memang tidak disimpan.";
-  } catch (error) {
-    console.error("Load match summary error:", error);
-    el.matchHelperText.textContent = "Ringkasan lokal rusak atau tidak valid.";
   }
 }
 
@@ -1071,8 +1057,6 @@ el.loadMatchSampleBtn.addEventListener("click", () => {
 });
 
 el.analyzeMatchBtn.addEventListener("click", analyzeCvMatch);
-el.saveMatchBtn.addEventListener("click", saveMatchSummary);
-el.loadMatchBtn.addEventListener("click", loadMatchSummary);
 
 /* ===== INIT ===== */
 renderAll();
