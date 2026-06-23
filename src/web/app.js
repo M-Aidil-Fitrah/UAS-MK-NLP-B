@@ -4,8 +4,40 @@
    ============================================================ */
 
 const MODEL_BASE = "./model";
+const MATCH_STORAGE_KEY = "skillscope.cvMatchSummary.v1";
 
 const SAMPLE_TEXT = `PT Nusantara Data sedang mencari Data Analyst yang menguasai Python, SQL, dan Microsoft Excel. Kandidat diharapkan memiliki kemampuan komunikasi yang baik, teliti, mampu membuat dashboard, serta familiar dengan Tableau atau Power BI. Pengalaman dalam analisis data dan machine learning menjadi nilai tambah. Kemampuan bekerja dalam tim dan problem solving yang kuat sangat diutamakan.`;
+
+const MATCH_WEIGHTS = {
+  Tech: 0.4,
+  HSkill: 0.4,
+  SSkill: 0.2,
+};
+
+const SOFT_SKILL_FALLBACKS = [
+  "adaptif",
+  "analitis",
+  "beradaptasi",
+  "berinisiatif",
+  "berkomunikasi",
+  "berpikir kritis",
+  "bekerja dalam tim",
+  "disiplin",
+  "jujur",
+  "kemampuan belajar",
+  "kemauan belajar",
+  "kerja sama",
+  "kerja sama tim",
+  "kepemimpinan",
+  "komunikasi",
+  "komunikasi yang baik",
+  "kreatif",
+  "mandiri",
+  "pemecahan masalah",
+  "problem solving",
+  "teliti",
+  "teamwork",
+];
 
 /* ===== STATE ===== */
 const state = {
@@ -13,8 +45,14 @@ const state = {
   vocab: null,
   id2label: {},
   activeFilter: "all",
+  activeMode: "extractor",
   entities: [],
   lastText: "",
+  cvText: "",
+  matchJobText: "",
+  cvEntities: [],
+  jobMatchEntities: [],
+  matchResult: null,
 };
 
 /* ===== DOM ELEMENTS ===== */
@@ -57,6 +95,35 @@ const el = {
 
   // Footer
   footerModelInfo: document.getElementById("footerModelInfo"),
+
+  // Mode switcher
+  extractorModeBtn: document.getElementById("extractorModeButton"),
+  matchModeBtn: document.getElementById("matchModeButton"),
+  extractorWorkspace: document.getElementById("extractorWorkspace"),
+  matchWorkspace: document.getElementById("matchWorkspace"),
+
+  // CV match
+  cvFileInput: document.getElementById("cvFileInput"),
+  cvFileStatus: document.getElementById("cvFileStatus"),
+  cvText: document.getElementById("cvText"),
+  cvCharCounter: document.getElementById("cvCharCounter"),
+  clearCvBtn: document.getElementById("clearCvButton"),
+  matchJobText: document.getElementById("matchJobText"),
+  matchJobCharCounter: document.getElementById("matchJobCharCounter"),
+  loadMatchSampleBtn: document.getElementById("loadMatchSampleButton"),
+  analyzeMatchBtn: document.getElementById("analyzeMatchButton"),
+  saveMatchBtn: document.getElementById("saveMatchButton"),
+  loadMatchBtn: document.getElementById("loadMatchButton"),
+  matchHelperText: document.getElementById("matchHelperText"),
+  matchScoreRing: document.getElementById("matchScoreRing"),
+  matchScore: document.getElementById("matchScore"),
+  matchedSkillCount: document.getElementById("matchedSkillCount"),
+  missingSkillCount: document.getElementById("missingSkillCount"),
+  extraSkillCount: document.getElementById("extraSkillCount"),
+  categoryBreakdown: document.getElementById("categoryBreakdown"),
+  matchedSkillList: document.getElementById("matchedSkillList"),
+  missingSkillList: document.getElementById("missingSkillList"),
+  extraSkillList: document.getElementById("extraSkillList"),
 };
 
 /* ===== UTILITIES ===== */
@@ -220,7 +287,7 @@ async function runInference(text) {
     });
   }
 
-  return mergeBioEntities(preds, text);
+  return applySoftSkillFallbacks(text, mergeBioEntities(preds, text));
 }
 
 function normalizeEntityType(label) {
@@ -271,6 +338,54 @@ function dedupeEntities(entities) {
   });
 }
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+function hasOverlappingEntity(entities, start, end, type = null) {
+  return entities.some((entity) => {
+    const sameType = !type || entity.type === type;
+    return sameType && rangesOverlap(entity.start, entity.end, start, end);
+  });
+}
+
+function applySoftSkillFallbacks(text, entities) {
+  if (!text.trim()) return entities;
+
+  const additions = [];
+  const seen = new Set(entities.map((entity) => `${entity.type}:${canonicalSkillText(entity.text)}`));
+
+  const sortedFallbacks = [...SOFT_SKILL_FALLBACKS].sort((a, b) => b.length - a.length);
+  for (const phrase of sortedFallbacks) {
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])(${escapeRegex(phrase)})(?=$|[^\\p{L}\\p{N}])`, "giu");
+    for (const match of text.matchAll(pattern)) {
+      const matchedText = match[2];
+      const start = match.index + match[1].length;
+      const end = start + matchedText.length;
+      const key = `SSkill:${canonicalSkillText(matchedText)}`;
+
+      if (seen.has(key)) continue;
+      if (hasOverlappingEntity(entities, start, end) || hasOverlappingEntity(additions, start, end)) continue;
+
+      seen.add(key);
+      additions.push({
+        type: "SSkill",
+        start,
+        end,
+        text: text.slice(start, end),
+        confidence: 0.72,
+        source: "soft_skill_fallback",
+      });
+    }
+  }
+
+  return dedupeEntities([...entities, ...additions]).sort((a, b) => a.start - b.start || a.end - b.end);
+}
+
 /* ===== RENDERING ===== */
 function renderHighlights(text, entities) {
   const visible =
@@ -314,7 +429,7 @@ function renderEntityList(listEl, entities) {
       (e, i) => `
       <li style="animation-delay: ${i * 0.05}s">
         <span>${escapeHtml(e.text)}</span>
-        <span class="confidence">${(e.confidence * 100).toFixed(1)}%</span>
+        <span class="confidence">${e.source === "soft_skill_fallback" ? "fallback" : `${(e.confidence * 100).toFixed(1)}%`}</span>
       </li>`
     )
     .join("");
@@ -388,6 +503,383 @@ function exportCsv() {
     [e.type, `"${e.text.replaceAll('"', '""')}"`, e.confidence.toFixed(4), e.start, e.end].join(",")
   );
   downloadFile("skillscope-results.csv", [header, ...rows].join("\n"), "text/csv");
+}
+
+/* ===== CV MATCH: DOCUMENT PARSING ===== */
+function getFileExtension(file) {
+  return (file.name.split(".").pop() || "").toLowerCase();
+}
+
+function cleanExtractedText(text) {
+  return text
+    .replace(/\u0000/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractPdfText(file) {
+  if (!window.pdfjsLib) {
+    throw new Error("PDF.js belum termuat. Cek koneksi CDN atau gunakan paste manual.");
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pages = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item) => item.str || "").join(" ");
+    pages.push(pageText);
+  }
+
+  return cleanExtractedText(pages.join("\n"));
+}
+
+async function extractDocxText(file) {
+  if (!window.mammoth) {
+    throw new Error("Mammoth.js belum termuat. Cek koneksi CDN atau gunakan paste manual.");
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return cleanExtractedText(result.value || "");
+}
+
+async function extractTxtText(file) {
+  return cleanExtractedText(await file.text());
+}
+
+async function extractDocumentText(file) {
+  const extension = getFileExtension(file);
+  const mime = file.type;
+
+  if (extension === "pdf" || mime === "application/pdf") return extractPdfText(file);
+  if (
+    extension === "docx" ||
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return extractDocxText(file);
+  }
+  if (extension === "txt" || mime.startsWith("text/")) return extractTxtText(file);
+
+  throw new Error("Format tidak didukung. Gunakan PDF, DOCX, TXT, atau paste manual.");
+}
+
+/* ===== CV MATCH: SCORING ===== */
+function canonicalSkillText(text) {
+  return text
+    .toLowerCase()
+    .replace(/\breact\s*\.?\s*js\b/g, "react")
+    .replace(/\bnext\s*\.?\s*js\b/g, "next.js")
+    .replace(/\bexpress\s*\.?\s*js\b/g, "express")
+    .replace(/\bnode\s*\.?\s*js\b/g, "node.js")
+    .replace(/\bgithub\b/g, "git")
+    .replace(/\bmicrosoft\s+excel\b/g, "excel")
+    .replace(/\bms\s+excel\b/g, "excel")
+    .replace(/\bpowerbi\b/g, "power bi")
+    .replace(/\bpostgre\s*sql\b/g, "postgresql")
+    .replace(/\btailwind\s+css\b/g, "tailwind")
+    .replace(/\bvue\s+js\b/g, "vue")
+    .replace(/[^\p{L}\p{N}+#.]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalTextForSearch(text) {
+  return ` ${canonicalSkillText(text)} `;
+}
+
+function searchContainsSkill(normalizedHaystack, normalizedNeedle) {
+  if (!normalizedNeedle || normalizedNeedle.length < 2) return false;
+  return normalizedHaystack.includes(` ${normalizedNeedle} `);
+}
+
+function uniqueEntitiesForMatch(entities) {
+  const map = new Map();
+
+  for (const entity of entities) {
+    const key = `${entity.type}:${canonicalSkillText(entity.text)}`;
+    const normalized = canonicalSkillText(entity.text);
+    if (!normalized) continue;
+
+    const existing = map.get(key);
+    if (!existing || entity.confidence > existing.confidence) {
+      map.set(key, { ...entity, normalized });
+    }
+  }
+
+  return [...map.values()].sort((a, b) => a.type.localeCompare(b.type) || a.normalized.localeCompare(b.normalized));
+}
+
+function skillTextsMatch(a, b) {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4) return false;
+
+  const aWords = a.split(" ");
+  const bWords = b.split(" ");
+
+  if (aWords.length === 1 && bWords.length > 1) return bWords.includes(a);
+  if (bWords.length === 1 && aWords.length > 1) return aWords.includes(b);
+
+  return false;
+}
+
+function findEntityMatch(target, candidates, normalizedCvText) {
+  const sameTypeMatch = candidates.find(
+    (candidate) => target.type === candidate.type && skillTextsMatch(target.normalized, candidate.normalized)
+  );
+  if (sameTypeMatch) return { entity: sameTypeMatch, source: "ner" };
+
+  const crossTypeMatch = candidates.find((candidate) => skillTextsMatch(target.normalized, candidate.normalized));
+  if (crossTypeMatch) return { entity: crossTypeMatch, source: "ner_cross_label" };
+
+  if (searchContainsSkill(normalizedCvText, target.normalized)) {
+    return {
+      entity: {
+        type: target.type,
+        text: target.text,
+        normalized: target.normalized,
+        confidence: 0.75,
+      },
+      source: "cv_text",
+    };
+  }
+
+  return null;
+}
+
+function compareCvToJob(cvEntities, jobEntities, rawCvText = "") {
+  const cvUnique = uniqueEntitiesForMatch(cvEntities);
+  const jobUnique = uniqueEntitiesForMatch(jobEntities);
+  const normalizedCvText = canonicalTextForSearch(rawCvText);
+
+  const matched = [];
+  const missing = [];
+  const usedCvKeys = new Set();
+
+  for (const jobEntity of jobUnique) {
+    const match = findEntityMatch(jobEntity, cvUnique, normalizedCvText);
+    if (match) {
+      const cvMatch = match.entity;
+      usedCvKeys.add(`${cvMatch.type}:${cvMatch.normalized}`);
+      matched.push({
+        type: jobEntity.type,
+        text: jobEntity.text,
+        cvText: cvMatch.text,
+        confidence: Math.min(jobEntity.confidence, cvMatch.confidence),
+        source: match.source,
+      });
+    } else {
+      missing.push(jobEntity);
+    }
+  }
+
+  const extra = cvUnique.filter((cvEntity) => !usedCvKeys.has(`${cvEntity.type}:${cvEntity.normalized}`));
+  const breakdown = {};
+
+  for (const type of Object.keys(MATCH_WEIGHTS)) {
+    const jobCount = jobUnique.filter((entity) => entity.type === type).length;
+    const matchedCount = matched.filter((entity) => entity.type === type).length;
+    breakdown[type] = {
+      jobCount,
+      matchedCount,
+      score: jobCount === 0 ? null : matchedCount / jobCount,
+    };
+  }
+
+  const activeTypes = Object.entries(breakdown).filter(([, item]) => item.jobCount > 0);
+  const activeWeightTotal = activeTypes.reduce((sum, [type]) => sum + MATCH_WEIGHTS[type], 0);
+  const overall =
+    activeWeightTotal === 0
+      ? 0
+      : activeTypes.reduce((sum, [type, item]) => sum + item.score * (MATCH_WEIGHTS[type] / activeWeightTotal), 0);
+
+  return {
+    overall,
+    matched,
+    missing,
+    extra,
+    breakdown,
+    cvEntityCount: cvUnique.length,
+    jobEntityCount: jobUnique.length,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function renderMatchList(listEl, items, emptyText, variant = "default") {
+  if (!items.length) {
+    listEl.innerHTML = `<li class="empty-row">${escapeHtml(emptyText)}</li>`;
+    return;
+  }
+
+  listEl.innerHTML = items
+    .map((item) => {
+      const secondary =
+        variant === "matched" && item.cvText && item.cvText.toLowerCase() !== item.text.toLowerCase()
+          ? `<span class="match-secondary">CV: ${escapeHtml(item.cvText)}</span>`
+          : `<span class="match-secondary">${item.source === "cv_text" ? "text match" : `${(item.confidence * 100).toFixed(1)}%`}</span>`;
+
+      return `
+        <li>
+          <span>
+            <strong>${escapeHtml(item.text)}</strong>
+            <em>${escapeHtml(item.type)}</em>
+          </span>
+          ${secondary}
+        </li>`;
+    })
+    .join("");
+}
+
+function renderCategoryBreakdown(result) {
+  const rows = Object.entries(result.breakdown)
+    .map(([type, item]) => {
+      const pct = item.score === null ? 0 : Math.round(item.score * 100);
+      const label = item.score === null ? "Tidak ada requirement" : `${item.matchedCount}/${item.jobCount} cocok`;
+      return `
+        <div class="breakdown-row">
+          <div class="breakdown-top">
+            <span>${type}</span>
+            <strong>${item.score === null ? "—" : `${pct}%`}</strong>
+          </div>
+          <div class="breakdown-track">
+            <span style="width:${pct}%"></span>
+          </div>
+          <small>${label}</small>
+        </div>`;
+    })
+    .join("");
+
+  el.categoryBreakdown.innerHTML = rows;
+}
+
+function renderMatchResult(result) {
+  const score = Math.round(result.overall * 100);
+  el.matchScore.textContent = `${score}%`;
+  el.matchScoreRing.style.setProperty("--score", `${score}%`);
+  el.matchedSkillCount.textContent = result.matched.length;
+  el.missingSkillCount.textContent = result.missing.length;
+  el.extraSkillCount.textContent = result.extra.length;
+
+  renderCategoryBreakdown(result);
+  renderMatchList(el.matchedSkillList, result.matched, "Belum ada skill yang cocok.", "matched");
+  renderMatchList(el.missingSkillList, result.missing, "Tidak ada skill yang hilang.");
+  renderMatchList(el.extraSkillList, result.extra, "Tidak ada extra skill dari CV.");
+}
+
+function setMode(mode) {
+  state.activeMode = mode;
+  const isMatch = mode === "match";
+
+  el.extractorModeBtn.classList.toggle("active", !isMatch);
+  el.matchModeBtn.classList.toggle("active", isMatch);
+  el.extractorWorkspace.classList.toggle("active", !isMatch);
+  el.matchWorkspace.classList.toggle("active", isMatch);
+
+  if (isMatch && !el.matchJobText.value.trim() && el.jobText.value.trim()) {
+    el.matchJobText.value = el.jobText.value;
+    updateMatchJobCounter();
+  }
+}
+
+function updateCvCounter() {
+  el.cvCharCounter.textContent = `${el.cvText.value.length.toLocaleString("id-ID")} karakter`;
+}
+
+function updateMatchJobCounter() {
+  el.matchJobCharCounter.textContent = `${el.matchJobText.value.length.toLocaleString("id-ID")} karakter`;
+}
+
+function setMatchButtonLoading(isLoading) {
+  el.analyzeMatchBtn.disabled = isLoading;
+  el.analyzeMatchBtn.innerHTML = isLoading
+    ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Analyzing...`
+    : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Analyze Match`;
+}
+
+async function analyzeCvMatch() {
+  const cvText = el.cvText.value.trim();
+  const jobText = el.matchJobText.value.trim();
+
+  if (!cvText) {
+    el.matchHelperText.textContent = "CV masih kosong. Upload file atau paste teks CV terlebih dahulu.";
+    return;
+  }
+
+  if (!jobText) {
+    el.matchHelperText.textContent = "Lowongan target masih kosong.";
+    return;
+  }
+
+  if (!state.session || !state.vocab) {
+    el.matchHelperText.textContent = "Model belum siap. Tunggu model selesai dimuat.";
+    return;
+  }
+
+  try {
+    setMatchButtonLoading(true);
+    el.matchHelperText.textContent = "Mengekstrak skill dari CV dan lowongan...";
+
+    state.cvText = cvText;
+    state.matchJobText = jobText;
+    state.cvEntities = await runInference(cvText);
+    state.jobMatchEntities = await runInference(jobText);
+    state.matchResult = compareCvToJob(state.cvEntities, state.jobMatchEntities, cvText);
+
+    renderMatchResult(state.matchResult);
+    el.matchHelperText.textContent = `Analisis selesai: ${state.matchResult.matched.length} cocok, ${state.matchResult.missing.length} belum ditemukan di CV.`;
+  } catch (error) {
+    console.error("CV match error:", error);
+    el.matchHelperText.textContent = "Analisis CV gagal. Cek console browser untuk detail.";
+  } finally {
+    setMatchButtonLoading(false);
+  }
+}
+
+function saveMatchSummary() {
+  if (!state.matchResult) {
+    el.matchHelperText.textContent = "Belum ada hasil match untuk disimpan.";
+    return;
+  }
+
+  const payload = {
+    matchResult: state.matchResult,
+    cvEntities: uniqueEntitiesForMatch(state.cvEntities),
+    jobEntities: uniqueEntitiesForMatch(state.jobMatchEntities),
+  };
+
+  try {
+    localStorage.setItem(MATCH_STORAGE_KEY, JSON.stringify(payload));
+    el.matchHelperText.textContent = "Ringkasan match disimpan lokal. Raw CV tidak disimpan.";
+  } catch (error) {
+    console.error("Save match summary error:", error);
+    el.matchHelperText.textContent = "Gagal menyimpan lokal. Browser mungkin membatasi localStorage.";
+  }
+}
+
+function loadMatchSummary() {
+  const raw = localStorage.getItem(MATCH_STORAGE_KEY);
+  if (!raw) {
+    el.matchHelperText.textContent = "Belum ada ringkasan lokal yang tersimpan.";
+    return;
+  }
+
+  try {
+    const payload = JSON.parse(raw);
+    state.matchResult = payload.matchResult;
+    state.cvEntities = payload.cvEntities || [];
+    state.jobMatchEntities = payload.jobEntities || [];
+    renderMatchResult(state.matchResult);
+    el.matchHelperText.textContent = "Ringkasan lokal berhasil dimuat. File CV mentah memang tidak disimpan.";
+  } catch (error) {
+    console.error("Load match summary error:", error);
+    el.matchHelperText.textContent = "Ringkasan lokal rusak atau tidak valid.";
+  }
 }
 
 /* ===== MODEL INITIALIZATION ===== */
@@ -522,11 +1014,69 @@ el.jobText.addEventListener("input", updateCharCounter);
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
     e.preventDefault();
-    el.extractBtn.click();
+    if (state.activeMode === "match") {
+      el.analyzeMatchBtn.click();
+    } else {
+      el.extractBtn.click();
+    }
   }
 });
+
+// Mode switcher
+el.extractorModeBtn.addEventListener("click", () => setMode("extractor"));
+el.matchModeBtn.addEventListener("click", () => setMode("match"));
+
+// CV file upload
+el.cvFileInput.addEventListener("change", async () => {
+  const file = el.cvFileInput.files?.[0];
+  if (!file) return;
+
+  try {
+    el.cvFileStatus.textContent = `Membaca ${file.name}...`;
+    const text = await extractDocumentText(file);
+
+    if (!text) {
+      el.cvFileStatus.textContent =
+        "File berhasil dibaca, tetapi teks kosong. Jika PDF berupa scan/foto, paste teks CV secara manual.";
+      return;
+    }
+
+    el.cvText.value = text;
+    updateCvCounter();
+    el.cvFileStatus.textContent = `${file.name} berhasil dibaca (${text.length.toLocaleString("id-ID")} karakter).`;
+  } catch (error) {
+    console.error("CV file parse error:", error);
+    el.cvFileStatus.textContent = error.message || "Gagal membaca file. Gunakan paste manual.";
+  } finally {
+    el.cvFileInput.value = "";
+  }
+});
+
+// CV match controls
+el.cvText.addEventListener("input", updateCvCounter);
+el.matchJobText.addEventListener("input", updateMatchJobCounter);
+
+el.clearCvBtn.addEventListener("click", () => {
+  el.cvText.value = "";
+  state.cvText = "";
+  state.cvEntities = [];
+  updateCvCounter();
+  el.cvFileStatus.textContent = "CV dibersihkan. Upload file baru atau paste teks CV.";
+});
+
+el.loadMatchSampleBtn.addEventListener("click", () => {
+  el.matchJobText.value = SAMPLE_TEXT;
+  updateMatchJobCounter();
+  el.matchHelperText.textContent = "Contoh lowongan dimuat untuk mode CV Match.";
+});
+
+el.analyzeMatchBtn.addEventListener("click", analyzeCvMatch);
+el.saveMatchBtn.addEventListener("click", saveMatchSummary);
+el.loadMatchBtn.addEventListener("click", loadMatchSummary);
 
 /* ===== INIT ===== */
 renderAll();
 updateCharCounter();
+updateCvCounter();
+updateMatchJobCounter();
 initializeModel();

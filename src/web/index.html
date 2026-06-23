@@ -11,6 +11,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./style.css" />
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
   </head>
   <body>
 
@@ -98,8 +100,20 @@
         </article>
       </section>
 
+      <!-- ===== MODE SWITCHER ===== -->
+      <nav class="mode-switcher" aria-label="Mode aplikasi">
+        <button class="mode-tab active" id="extractorModeButton" data-mode="extractor" type="button">
+          <span class="mode-icon">🔎</span>
+          Job Extractor
+        </button>
+        <button class="mode-tab" id="matchModeButton" data-mode="match" type="button">
+          <span class="mode-icon">🧩</span>
+          CV Match
+        </button>
+      </nav>
+
       <!-- ===== WORKSPACE ===== -->
-      <section class="workspace" aria-label="Workspace">
+      <section class="workspace mode-panel active" id="extractorWorkspace" aria-label="Workspace ekstraksi lowongan">
 
         <!-- INPUT PANEL -->
         <section class="panel input-panel" aria-label="Input lowongan kerja">
@@ -177,6 +191,138 @@
               Export CSV
             </button>
           </div>
+        </section>
+      </section>
+
+      <!-- ===== CV MATCH WORKSPACE ===== -->
+      <section class="match-workspace mode-panel" id="matchWorkspace" aria-label="Workspace CV match">
+
+        <!-- CV PANEL -->
+        <section class="panel cv-panel" aria-label="Input CV">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Candidate profile</p>
+              <h2 class="panel-title">CV Kandidat</h2>
+            </div>
+            <label class="ghost-btn file-btn" for="cvFileInput">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload CV
+            </label>
+            <input id="cvFileInput" class="file-input" type="file" accept=".pdf,.docx,.txt,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          </div>
+
+          <p class="file-status" id="cvFileStatus">
+            Dukung PDF, DOCX, dan TXT. Semua parsing berjalan lokal di browser.
+          </p>
+
+          <div class="textarea-wrapper">
+            <textarea
+              id="cvText"
+              spellcheck="false"
+              placeholder="Upload CV atau tempel teks CV di sini. Jika PDF adalah hasil scan/foto, gunakan paste manual karena tidak ada OCR."
+            ></textarea>
+            <div class="char-counter" id="cvCharCounter">0 karakter</div>
+          </div>
+
+          <div class="action-bar">
+            <button class="outline-btn" id="clearCvButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Clear CV
+            </button>
+          </div>
+        </section>
+
+        <!-- JOB MATCH PANEL -->
+        <section class="panel match-job-panel" aria-label="Input lowongan untuk matching">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Target role</p>
+              <h2 class="panel-title">Lowongan Target</h2>
+            </div>
+            <button class="ghost-btn" id="loadMatchSampleButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              Muat Contoh
+            </button>
+          </div>
+
+          <div class="textarea-wrapper">
+            <textarea
+              id="matchJobText"
+              spellcheck="false"
+              placeholder="Tempel teks lowongan target di sini. Sistem akan membandingkan skill CV dengan requirement lowongan."
+            ></textarea>
+            <div class="char-counter" id="matchJobCharCounter">0 karakter</div>
+          </div>
+
+          <div class="action-bar">
+            <button class="primary-btn" id="analyzeMatchButton" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              Analyze Match
+            </button>
+            <button class="outline-btn" id="saveMatchButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Simpan Lokal
+            </button>
+            <button class="outline-btn" id="loadMatchButton" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Muat Lokal
+            </button>
+          </div>
+
+          <p class="status-text" id="matchHelperText">
+            Upload atau paste CV, isi lowongan target, lalu jalankan Analyze Match.
+          </p>
+        </section>
+
+        <!-- MATCH RESULT PANEL -->
+        <section class="panel match-result-panel" aria-label="Hasil CV match">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Match intelligence</p>
+              <h2 class="panel-title">Kecocokan CV vs Lowongan</h2>
+            </div>
+            <div class="score-ring" id="matchScoreRing">
+              <span id="matchScore">—</span>
+            </div>
+          </div>
+
+          <div class="match-summary-grid">
+            <article class="match-summary-card">
+              <span class="summary-value" id="matchedSkillCount">0</span>
+              <span class="summary-label">Matched</span>
+            </article>
+            <article class="match-summary-card">
+              <span class="summary-value" id="missingSkillCount">0</span>
+              <span class="summary-label">Missing</span>
+            </article>
+            <article class="match-summary-card">
+              <span class="summary-value" id="extraSkillCount">0</span>
+              <span class="summary-label">Extra</span>
+            </article>
+          </div>
+
+          <div class="category-breakdown" id="categoryBreakdown">
+            <div class="breakdown-empty">Breakdown kategori akan muncul setelah analisis.</div>
+          </div>
+
+          <div class="match-list-grid">
+            <article class="match-list-card matched-card">
+              <h3>Matched Skills</h3>
+              <ul id="matchedSkillList" class="match-list"></ul>
+            </article>
+            <article class="match-list-card missing-card">
+              <h3>Missing Skills</h3>
+              <ul id="missingSkillList" class="match-list"></ul>
+            </article>
+            <article class="match-list-card extra-card">
+              <h3>Extra CV Skills</h3>
+              <ul id="extraSkillList" class="match-list"></ul>
+            </article>
+          </div>
+
+          <p class="privacy-note">
+            CV diproses lokal di browser. Tombol Simpan Lokal hanya menyimpan ringkasan hasil match, bukan file CV mentah.
+          </p>
         </section>
       </section>
 
